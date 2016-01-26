@@ -38,6 +38,7 @@ func main() {
 	failchan := make(chan int, *workerNum)
 	lapsechan := make(chan Stats, *workerNum)
 	start := time.Now()
+	runningDuration := time.Duration(0)
 
 	queue := make(chan int, *workerNum)
 	for i := 0; i < *workerNum; i++ {
@@ -51,6 +52,7 @@ func main() {
 		time.Sleep(time.Duration(1) * time.Second)
 		if time.Since(start).Seconds() > float64(*duration) {
 			finish = true
+			runningDuration = time.Since(start)
 			log.Println("should finish~!!!")
 			break
 		}
@@ -78,8 +80,7 @@ func main() {
 	}
 	lapseMean := lapseTotal.Nanoseconds() / int64(runs) / 1000000
 	log.Printf("Lapse: \n	max	%v	\n	min	%v	\n	mean	%dms	\n", lapseMax, lapseMin, lapseMean)
-	log.Printf("Tested with (%d clients  %d runs), %d failed, \n\n\n", *workerNum, runs, failedRequests)
-
+	log.Printf("Tested with (%d clients, totally %d runs), in %v, %d failed, \n\n\n", *workerNum, runs, runningDuration, failedRequests)
 }
 
 func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) {
