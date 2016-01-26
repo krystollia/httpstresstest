@@ -10,94 +10,133 @@ import (
 	"time"
 )
 
+var (
+	serverUrl = ""
+	finish    bool
+)
+
+type Stats struct {
+	max   time.Duration
+	min   time.Duration
+	total time.Duration
+	count int
+}
+
 func main() {
 	fs := flag.NewFlagSet("stress-test", flag.ExitOnError)
-	clientNum := fs.Int("client-num", 1, "specify the clients num to run concurrently")
-	testUrl := fs.String("url", "https://fds.so/d/54378fd28a6c81e3/2cbKCNg2pq", "specify the addr to test")
-	runs := fs.Int("runs", 10, "specify how many runs")
+	workerNum := fs.Int("client-num", 3, "specify the clients num to run concurrently")
+	testUrl := fs.String("url", "https://fds.so/d/54378fd28a6c81e3/2cbKCNg2pq", "specify the url to test")
+	duration := fs.Int("duration", 10, "how long the testing lasts(in seconds)")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("url:", *testUrl)
-	log.Println("client-num:", *clientNum)
-	log.Println("runs:", *runs)
-	url := *testUrl
-	failchan := make(chan int)
-	lapses := make(chan [3]time.Duration)
-	for i := 0; i < *clientNum; i++ {
-		go func(i int) {
-			fails := 0
-			lapseMax := time.Duration(0)
-			lapseMin := time.Duration(100) * time.Minute
-			lapseTotal := time.Duration(0)
-			defer func() {
-				failchan <- fails
-				lapses <- [3]time.Duration{lapseMax, lapseMin, lapseTotal}
-			}()
-			for j := 0; j < *runs; j++ {
-				req, err := http.NewRequest("GET", url, nil)
-				if err != nil {
-					panic(err)
-				}
-				req.Header.Add("User-Agent", "Mozilla/5.0 (Linux; Android 4.4.4; Nexus 5 Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.93 Mobile Safari/537.36")
-				start := time.Now()
-				resp, err := http.DefaultClient.Do(req)
-				lapse := time.Since(start)
-				if lapseMax < lapse {
-					lapseMax = lapse
-				}
-				if lapseMin > lapse {
-					lapseMin = lapse
-				}
-				lapseTotal += lapse
-				if err != nil {
-					log.Println(i, j, "GET error:", err, "resp:", resp)
-					fails++
-					continue
-				}
-				if resp.StatusCode != http.StatusOK {
-					log.Println(i, j, "Status code is not 200!", resp.StatusCode)
-					fails++
-					continue
-				}
-				b, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					log.Println(i, j, "ReadAll failed, err:", err)
-				}
-				if !strings.Contains(string(b), "deepshare-redirect.min.js") {
-					log.Println(i, j, "Check failed. not contain deepshare-redirect.min.js")
-					fails++
-					continue
-				}
-			}
-		}(i)
+	serverUrl = *testUrl
+	log.Println("client-num:", *workerNum)
+	log.Println("duration:", *duration)
+
+	failchan := make(chan int, *workerNum)
+	lapsechan := make(chan Stats, *workerNum)
+	start := time.Now()
+
+	queue := make(chan int, *workerNum)
+	for i := 0; i < *workerNum; i++ {
+		queue <- 1
+	}
+	for i := 0; i < *workerNum; i++ {
+		go workerFunc(i, queue, failchan, lapsechan)
 	}
 
-	fails := make([]int, *clientNum)
+	for {
+		time.Sleep(time.Duration(1) * time.Second)
+		if time.Since(start).Seconds() > float64(*duration) {
+			finish = true
+			log.Println("should finish~!!!")
+			break
+		}
+	}
+
+	failedRequests := 0
 	lapseMax := time.Duration(0)
 	lapseMin := time.Duration(100) * time.Minute
 	lapseTotal := time.Duration(0)
-	failedClients := 0
-	for i := 0; i < *clientNum; i++ {
+	runs := 0
+	for i := 0; i < *workerNum; i++ {
 		n := <-failchan
-		a := <-lapses
+		lapses := <-lapsechan
 		if n > 0 {
-			failedClients++
-			fails[i] = n
+			failedRequests++
 		}
-		if lapseMax < a[0] {
-			lapseMax = a[0]
+		if lapseMax < lapses.max {
+			lapseMax = lapses.max
 		}
-		if lapseMin > a[1] {
-			lapseMin = a[1]
+		if lapseMin > lapses.min {
+			lapseMin = lapses.min
 		}
-		lapseTotal += a[2]
+		lapseTotal += lapses.total
+		runs += lapses.count
 	}
-	lapseMean := lapseTotal.Nanoseconds() / int64(*clientNum) / int64(*runs) / 1000000
-	log.Printf("Lapse: \n	max	%v	\n	min	%v	\n	mean	%dms\n", lapseMax, lapseMin, lapseMean)
+	lapseMean := lapseTotal.Nanoseconds() / int64(runs) / 1000000
+	log.Printf("Lapse: \n	max	%v	\n	min	%v	\n	mean	%dms	\n", lapseMax, lapseMin, lapseMean)
+	log.Printf("Tested with (%d clients  %d runs), %d failed, \n\n\n", *workerNum, runs, failedRequests)
 
-	log.Printf("Tested with (%d clients * %d runs), %d failed, \n\n\n", *clientNum, *runs, failedClients)
-	if failedClients > 0 {
-		log.Printf("fails: %v!\n", fails)
+}
+
+func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) {
+	j := 0
+	failedRequests := 0
+	lapseMax := time.Duration(0)
+	lapseMin := time.Duration(100) * time.Minute
+	lapseTotal := time.Duration(0)
+	for {
+		if finish {
+			break
+		}
+		<-queue
+
+		req, err := http.NewRequest("GET", serverUrl, nil)
+		if err != nil {
+			panic(err)
+		}
+		req.Header.Add("User-Agent", "Mozilla/5.0 (Linux; Android 4.4.4; Nexus 5 Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.93 Mobile Safari/537.36")
+		start := time.Now()
+		resp, err := http.DefaultClient.Do(req)
+		lapse := time.Since(start)
+		j++
+		if err != nil {
+			log.Println(i, j, "GET error:", err, "resp:", resp)
+			failedRequests++
+		} else if resp.StatusCode != http.StatusOK {
+			log.Println(i, j, "Status code is not 200!", resp.StatusCode)
+			failedRequests++
+		} else {
+			b, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				log.Println(i, j, "ReadAll failed, err:", err)
+				failedRequests++
+			} else if !strings.Contains(string(b), "deepshare-redirect.min.js") {
+				log.Println(i, j, "Check failed. not contain deepshare-redirect.min.js")
+				failedRequests++
+			} else {
+				log.Println(i, j, "succeed")
+			}
+		}
+
+		if lapse > lapseMax {
+			lapseMax = lapse
+		}
+		if lapse < lapseMin {
+			lapseMin = lapse
+		}
+		lapseTotal = lapseTotal + lapse
+
+		queue <- 1
 	}
+	lapsechan <- Stats{
+		max:   lapseMax,
+		min:   lapseMin,
+		total: lapseTotal,
+		count: j,
+	}
+	failchan <- failedRequests
 }
