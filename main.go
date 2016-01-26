@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -71,7 +72,7 @@ func main() {
 		n := <-failchan
 		lapses := <-lapsechan
 		if n > 0 {
-			failedRequests++
+			failedRequests = failedRequests + n
 		}
 		if lapseMax < lapses.max {
 			lapseMax = lapses.max
@@ -99,7 +100,7 @@ func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) 
 		}
 		<-queue
 
-		req, err := http.NewRequest("GET", serverUrl, nil)
+		req, err := http.NewRequest("GET", serverUrl+"?id="+strconv.Itoa(i)+","+strconv.Itoa(j), nil)
 		if err != nil {
 			panic(err)
 		}
