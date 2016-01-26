@@ -35,12 +35,6 @@ func main() {
 				lapses <- [3]time.Duration{lapseMax, lapseMin, lapseTotal}
 			}()
 			for j := 0; j < *runs; j++ {
-				succeed := false
-				defer func() {
-					if !succeed {
-						fails++
-					}
-				}()
 				req, err := http.NewRequest("GET", url, nil)
 				if err != nil {
 					panic(err)
@@ -58,11 +52,13 @@ func main() {
 				lapseTotal += lapse
 				if err != nil {
 					log.Println(i, j, "GET error:", err, "resp:", resp)
-					return
+					fails++
+					continue
 				}
 				if resp.StatusCode != http.StatusOK {
 					log.Println(i, j, "Status code is not 200!", resp.StatusCode)
-					return
+					fails++
+					continue
 				}
 				b, err := ioutil.ReadAll(resp.Body)
 				if err != nil {
@@ -70,9 +66,9 @@ func main() {
 				}
 				if !strings.Contains(string(b), "deepshare-redirect.min.js") {
 					log.Println(i, j, "Check failed. not contain deepshare-redirect.min.js")
-					return
+					fails++
+					continue
 				}
-				succeed = true
 			}
 		}(i)
 	}
