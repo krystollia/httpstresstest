@@ -13,7 +13,7 @@ import (
 func main() {
 	fs := flag.NewFlagSet("stress-test", flag.ExitOnError)
 	clientNum := fs.Int("client-num", 1, "specify the clients num to run concurrently")
-	testUrl := fs.String("url", "https://xxx/d/54378fd28a6c81e3/2cbKCNg2pq", "specify the addr to test")
+	testUrl := fs.String("url", "https://fds.so/d/54378fd28a6c81e3/2cbKCNg2pq", "specify the addr to test")
 	runs := fs.Int("runs", 10, "specify how many runs")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		log.Fatal(err)
@@ -25,7 +25,7 @@ func main() {
 	failchan := make(chan int)
 	lapses := make(chan [3]time.Duration)
 	for i := 0; i < *clientNum; i++ {
-		go func() {
+		go func(i int) {
 			fails := 0
 			lapseMax := time.Duration(0)
 			lapseMin := time.Duration(100) * time.Minute
@@ -57,24 +57,24 @@ func main() {
 				}
 				lapseTotal += lapse
 				if err != nil {
-					log.Println("GET error:", err, "resp:", resp)
+					log.Println(i, j, "GET error:", err, "resp:", resp)
 					return
 				}
 				if resp.StatusCode != http.StatusOK {
-					log.Println("Status code is not 200!", resp.StatusCode)
+					log.Println(i, j, "Status code is not 200!", resp.StatusCode)
 					return
 				}
 				b, err := ioutil.ReadAll(resp.Body)
 				if err != nil {
-					log.Println("ReadAll failed, err:", err)
+					log.Println(i, j, "ReadAll failed, err:", err)
 				}
 				if !strings.Contains(string(b), "deepshare-redirect.min.js") {
-					log.Println("Check failed. not contain deepshare-redirect.min.js")
+					log.Println(i, j, "Check failed. not contain deepshare-redirect.min.js")
 					return
 				}
 				succeed = true
 			}
-		}()
+		}(i)
 	}
 
 	fails := make([]int, *clientNum)
