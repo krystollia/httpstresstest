@@ -13,6 +13,7 @@ import (
 var (
 	serverUrl = ""
 	finish    bool
+	isDebug   bool
 )
 
 type Stats struct {
@@ -27,11 +28,14 @@ func main() {
 	workerNum := fs.Int("client-num", 3, "specify the clients num to run concurrently")
 	testUrl := fs.String("url", "https://fds.so/d/54378fd28a6c81e3/2cbKCNg2pq", "specify the url to test")
 	duration := fs.Int("duration", 10, "how long the testing lasts(in seconds)")
+	debug := fs.Bool("debug", true, "wether to print debug log")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("url:", *testUrl)
 	serverUrl = *testUrl
+	log.Println("debug:", *debug)
+	isDebug = *debug
 	log.Println("client-num:", *workerNum)
 	log.Println("duration:", *duration)
 
@@ -119,7 +123,9 @@ func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) 
 				log.Println(i, j, "Check failed. not contain deepshare-redirect.min.js")
 				failedRequests++
 			} else {
-				log.Println(i, j, "succeed")
+				if isDebug {
+					log.Println(i, j, "succeed")
+				}
 			}
 		}
 
