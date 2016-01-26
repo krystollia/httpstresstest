@@ -80,7 +80,7 @@ func main() {
 	}
 	lapseMean := lapseTotal.Nanoseconds() / int64(runs) / 1000000
 	log.Printf("Lapse: \n	max	%v	\n	min	%v	\n	mean	%dms	\n", lapseMax, lapseMin, lapseMean)
-	log.Printf("Tested with (%d clients, totally %d runs), in %v, %d failed, \n\n\n", *workerNum, runs, runningDuration, failedRequests)
+	log.Printf("Tested with (%d clients, totally %d runs), in %v, %d failed \n\n\n", *workerNum, runs, runningDuration, failedRequests)
 }
 
 func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) {
