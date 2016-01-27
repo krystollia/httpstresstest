@@ -89,26 +89,30 @@ func main() {
 }
 
 func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) {
-	j := 0
 	failedRequests := 0
 	lapseMax := time.Duration(0)
 	lapseMin := time.Duration(100) * time.Minute
 	lapseTotal := time.Duration(0)
-	for {
+	count := 0
+	for j := 0; ; j++ {
 		if finish {
 			break
 		}
+		count++
 		<-queue
-
 		req, err := http.NewRequest("GET", serverUrl+"?id="+strconv.Itoa(i)+","+strconv.Itoa(j), nil)
 		if err != nil {
 			panic(err)
 		}
 		req.Header.Add("User-Agent", "Mozilla/5.0 (Linux; Android 4.4.4; Nexus 5 Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.93 Mobile Safari/537.36")
 		start := time.Now()
-		resp, err := http.DefaultClient.Do(req)
+		cli := http.Client{
+			Transport: &http.Transport{
+				DisableKeepAlives: true,
+			},
+		}
+		resp, err := cli.Do(req)
 		lapse := time.Since(start)
-		j++
 		if err != nil {
 			log.Println(i, j, "GET error:", err, "resp:", resp)
 			failedRequests++
@@ -137,14 +141,13 @@ func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) 
 			lapseMin = lapse
 		}
 		lapseTotal = lapseTotal + lapse
-
 		queue <- 1
 	}
 	lapsechan <- Stats{
 		max:   lapseMax,
 		min:   lapseMin,
 		total: lapseTotal,
-		count: j,
+		count: count,
 	}
 	failchan <- failedRequests
 }
