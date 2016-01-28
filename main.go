@@ -107,7 +107,6 @@ func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) 
 		}
 
 		ua := fmt.Sprintf("Mozilla/5.0 (Linux; Android 100.%d.%d; Nexus 5 Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.93 Mobile Safari/537.36", i, j)
-		log.Println("ua:", ua)
 		req.Header.Add("User-Agent", ua)
 		start := time.Now()
 		cli := http.Client{
