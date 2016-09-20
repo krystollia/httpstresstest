@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -28,7 +29,7 @@ type Stats struct {
 func main() {
 	fs := flag.NewFlagSet("stress-test", flag.ExitOnError)
 	workerNum := fs.Int("client-num", 3, "specify the clients num to run concurrently")
-	testUrl := fs.String("url", "https://fds.so/d/54378fd28a6c81e3/2cbKCNg2pq", "specify the url to test")
+	testUrl := fs.String("url", "https://fds.so/d/54378fd28a6c81e3/8C36X45AE8", "specify the url to test")
 	duration := fs.Int("duration", 10, "how long the testing lasts(in seconds)")
 	debug := fs.Bool("debug", true, "wether to print debug log")
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -101,42 +102,11 @@ func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) 
 		}
 		count++
 		<-queue
-		req, err := http.NewRequest("GET", serverUrl+"?id="+strconv.Itoa(i)+","+strconv.Itoa(j), nil)
-		if err != nil {
-			panic(err)
-		}
 
-		ua := fmt.Sprintf("Mozilla/5.0 (Linux; Android 100.%d.%d; Nexus 5 Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.93 Mobile Safari/537.36", i, j)
-		req.Header.Add("User-Agent", ua)
-		start := time.Now()
-		cli := http.Client{
-			Transport: &http.Transport{
-				DisableKeepAlives: true,
-			},
-		}
-		resp, err := cli.Do(req)
-		lapse := time.Since(start)
-		if err != nil {
-			log.Println(i, j, "GET error:", err, "resp:", resp)
+		succeed, lapse := sendRequestNi(i, j)
+		if !succeed {
 			failedRequests++
-		} else if resp.StatusCode != http.StatusOK {
-			log.Println(i, j, "Status code is not 200!", resp.StatusCode)
-			failedRequests++
-		} else {
-			b, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				log.Println(i, j, "ReadAll failed, err:", err)
-				failedRequests++
-			} else if !strings.Contains(string(b), "deepshare-redirect.min.js") {
-				log.Println(i, j, "Check failed. not contain deepshare-redirect.min.js")
-				failedRequests++
-			} else {
-				if isDebug {
-					log.Println(i, j, "succeed")
-				}
-			}
 		}
-
 		if lapse > lapseMax {
 			lapseMax = lapse
 		}
@@ -153,4 +123,102 @@ func workerFunc(i int, queue chan int, failchan chan int, lapsechan chan Stats) 
 		count: count,
 	}
 	failchan <- failedRequests
+}
+
+func sendRequestSharelink(i, j int) (bool, time.Duration) {
+	req, err := http.NewRequest("GET", serverUrl+"?id="+strconv.Itoa(i)+","+strconv.Itoa(j), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	ua := fmt.Sprintf("Mozilla/5.0 (Linux; Android 100.%d.%d; Nexus 5 Build/KTU84P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.93 Mobile Safari/537.36", i, j)
+	req.Header.Add("User-Agent", ua)
+	start := time.Now()
+	cli := http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+	resp, err := cli.Do(req)
+	lapse := time.Since(start)
+	succeed := true
+	if err != nil {
+		log.Println(i, j, "GET error:", err, "resp:", resp)
+		succeed = false
+	} else if resp.StatusCode != http.StatusOK {
+		log.Println(i, j, "Status code is not 200!", resp.StatusCode)
+		succeed = false
+	} else {
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Println(i, j, "ReadAll failed, err:", err)
+			succeed = false
+		} else if !strings.Contains(string(b), "deepshare-redirect.min.js") {
+			log.Println(i, j, "Check failed. not contain deepshare-redirect.min.js")
+			succeed = false
+		} else {
+			if isDebug {
+				log.Println(i, j, "succeed")
+			}
+		}
+	}
+	return succeed, lapse
+}
+
+func sendRequestNi(i, j int) (bool, time.Duration) {
+	body := []byte(`{
+  "q": "播放周杰伦的歌",
+  "model": "Le_X520",
+  "tf": true,
+  "device_id": "le_s2:f4fef073",
+  "tz": "GMT+08:00_Asia/Shanghai",
+  "enc": "O5yNcMw1w603ruRSMQvmIwANQhhVvE2Km8PiRaFNQ%2FhV4pmPUG1BRa5R%2FNsv9VeBxqZ2QiTxvhbj%0AfBsqpvUg%2FWyuT5iZjC5sCknn6BEBhJRWnbB6azgzVkg16HRv2eyoFvoban82bE2T8gbFQOvVhD3i%0AvKP8kgo7%2BbgqWcyEjIM%3D%0A",
+  "app_list": {
+    "com.letv.android.account2": 1,
+    "cn.wps.moffice_eng2": 110
+  },
+  "events": [
+    {
+      "action": "action_perform_result",
+      "timestamp": 1472465416296,
+      "kvs": null
+    }
+  ]
+}` + "\n")
+	req, err := http.NewRequest("POST", serverUrl+"?id="+strconv.Itoa(i)+","+strconv.Itoa(j), bytes.NewReader(body))
+	if err != nil {
+		panic(err)
+	}
+
+	start := time.Now()
+	cli := http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+	resp, err := cli.Do(req)
+	lapse := time.Since(start)
+	succeed := true
+	if err != nil {
+		log.Println(i, j, "POST error:", err, "resp:", resp)
+		succeed = false
+	} else if resp.StatusCode != http.StatusOK {
+		log.Println(i, j, "Status code is not 200!", resp.StatusCode)
+		succeed = false
+	} else {
+		b, err := ioutil.ReadAll(resp.Body)
+		log.Println("~~~~~~", len(b))
+		if err != nil {
+			log.Println(i, j, "ReadAll failed, err:", err)
+			succeed = false
+		} else if len(b) < 1000 {
+			log.Println(i, j, "Check failed. body is too short")
+			succeed = false
+		} else {
+			if isDebug {
+				log.Println(i, j, "succeed")
+			}
+		}
+	}
+	return succeed, lapse
 }
